@@ -1,6 +1,6 @@
 name: Bug Report
-description: Report a bug encountered while operating Kubernetes
-labels: kind/bug
+description: Report a bug or issue with this project
+labels: bug
 body:
   - type: textarea
     id: problem
@@ -8,7 +8,7 @@ body:
       label: What happened?
       description: |
         Please provide as much info as possible. Not doing so may result in your bug not being addressed in a timely manner.
-        If this matter is security related, please disclose it privately via https://kubernetes.io/security
+        If this matter is security related, please disclose it privately to the project maintainers.
     validations:
       required: true
 
@@ -27,81 +27,37 @@ body:
       required: true
 
   - type: textarea
+    id: environment
+    attributes:
+      label: Environment Information
+      description: Please provide details about your environment
+      value: |
+        <details>
+
+        **Operating System:**
+        <!-- e.g., Ubuntu 20.04, Windows 10, macOS 12.0 -->
+
+        **Version/Commit:**
+        <!-- Project version or commit hash -->
+
+        **Additional Environment Details:**
+        <!-- Any other relevant environment information -->
+
+        </details>
+    validations:
+      required: true
+
+  - type: textarea
     id: additional
     attributes:
       label: Anything else we need to know?
+      description: Add any other context about the problem here
 
-  - type: textarea
-    id: kubeVersion
+  - type: checkboxes
+    id: terms
     attributes:
-      label: Kubernetes version
-      value: |
-        <details>
-
-        ```console
-        $ kubectl version
-        # paste output here
-        ```
-
-        </details>
-    validations:
-      required: true
-
-  - type: textarea
-    id: cloudProvider
-    attributes:
-      label: Cloud provider
-      value: |
-        <details>
-
-        </details>
-    validations:
-      required: true
-
-  - type: textarea
-    id: osVersion
-    attributes:
-      label: OS version
-      value: |
-        <details>
-
-        ```console
-        # On Linux:
-        $ cat /etc/os-release
-        # paste output here
-        $ uname -a
-        # paste output here
-
-        # On Windows:
-        C:\> wmic os get Caption, Version, BuildNumber, OSArchitecture
-        # paste output here
-        ```
-
-        </details>
-
-  - type: textarea
-    id: installer
-    attributes:
-      label: Install tools
-      value: |
-        <details>
-
-        </details>
-
-  - type: textarea
-    id: runtime
-    attributes:
-      label: Container runtime (CRI) and version (if applicable)
-      value: |
-        <details>
-
-        </details>
-
-  - type: textarea
-    id: plugins
-    attributes:
-      label: Related plugins (CNI, CSI, ...) and versions (if applicable)
-      value: |
-        <details>
-
-        </details>
+      label: Code of Conduct
+      description: By submitting this issue, you agree to follow our Code of Conduct
+      options:
+        - label: I agree to follow this project's Code of Conduct
+          required: true
