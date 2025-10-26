@@ -65,16 +65,18 @@ jobs:
             
             // Parse command
             let command = 'analyze';
+            const lowerComment = comment.toLowerCase();
+            
             if (comment.includes('use mapping')) {
               command = 'use-mapping';
             } else if (comment.includes('execute migration')) {
               command = 'execute';
+            } else if (lowerComment.match(/\b(done|finished)\b/)) {
+              command = 'done';
             } else if (comment.includes('accept') || comment.includes('preview')) {
               command = 'preview';
             } else if (comment.includes('modify') || comment.includes('adjust')) {
               command = 'modify';
-            } else if (comment.toLowerCase() === 'done' || comment.includes('finished')) {
-              command = 'done';
             } else if (comment.includes('cancel')) {
               command = 'cancel';
             } else if (comment.includes('Map ') || comment.includes('map ')) {
