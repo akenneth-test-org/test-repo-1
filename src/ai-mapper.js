@@ -294,14 +294,13 @@ Generate the updated mappings:`;
 }
 
 /**
- * GitHub Models LLM Provider (uses GitHub's AI models including GPT-4)
+ * GitHub Copilot LLM Provider (uses GitHub Copilot Chat API)
  */
-export class GitHubModelsProvider {
+export class GitHubCopilotProvider {
   constructor(githubToken, options = {}) {
     this.githubToken = githubToken;
     this.model = options.model || 'gpt-4o';
     this.customPrompt = options.customPrompt || '';
-    // Use Octokit for requests if available
     this.octokit = options.octokit;
   }
 
@@ -320,41 +319,37 @@ export class GitHubModelsProvider {
           content: prompt
         }
       ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3
+      temperature: 0.3,
+      stream: false
     };
 
-    let data;
-    if (this.octokit) {
-      // Use Octokit's request method
-      const response = await this.octokit.request('POST https://models.github.com/v1/chat/completions', {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        ...requestBody
-      });
-      data = response.data;
-    } else {
-      // Fallback to fetch
-      const response = await fetch('https://models.github.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.githubToken}`
-        },
-        body: JSON.stringify(requestBody)
-      });
+    const response = await fetch('https://api.githubcopilot.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.githubToken}`,
+        'Editor-Version': 'vscode/1.85.0',
+        'Editor-Plugin-Version': 'copilot-chat/0.11.1',
+        'User-Agent': 'GitHubCopilotChat/0.11.1'
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
-      }
-
-      data = await response.json();
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`GitHub Copilot API error: ${response.statusText} - ${errorText}`);
     }
 
+    const data = await response.json();
     const content = data.choices[0].message.content;
-    return JSON.parse(content);
+    
+    // Try to extract JSON from the response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    
+    throw new Error('Could not parse JSON from Copilot response');
   }
 
   async refineMappings(context) {
@@ -372,39 +367,37 @@ export class GitHubModelsProvider {
           content: prompt
         }
       ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3
+      temperature: 0.3,
+      stream: false
     };
 
-    let data;
-    if (this.octokit) {
-      const response = await this.octokit.request('POST https://models.github.com/v1/chat/completions', {
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        ...requestBody
-      });
-      data = response.data;
-    } else {
-      const response = await fetch('https://models.github.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.githubToken}`
-        },
-        body: JSON.stringify(requestBody)
-      });
+    const response = await fetch('https://api.githubcopilot.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.githubToken}`,
+        'Editor-Version': 'vscode/1.85.0',
+        'Editor-Plugin-Version': 'copilot-chat/0.11.1',
+        'User-Agent': 'GitHubCopilotChat/0.11.1'
+      },
+      body: JSON.stringify(requestBody)
+    });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
-      }
-
-      data = await response.json();
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`GitHub Copilot API error: ${response.statusText} - ${errorText}`);
     }
 
+    const data = await response.json();
     const content = data.choices[0].message.content;
-    return JSON.parse(content);
+    
+    // Try to extract JSON from the response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    
+    throw new Error('Could not parse JSON from Copilot response');
   }
 
   buildMappingPrompt(context) {

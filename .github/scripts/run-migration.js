@@ -7,7 +7,7 @@
 import { Octokit } from '@octokit/rest';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { LabelAnalyzer } from '../../src/label-analyzer.js';
-import { AIMapper, GitHubModelsProvider } from '../../src/ai-mapper.js';
+import { AIMapper, GitHubCopilotProvider } from '../../src/ai-mapper.js';
 import { MigrationExecutor } from '../../src/migration-executor.js';
 
 const COMMAND = process.env.COMMAND;
@@ -79,7 +79,7 @@ async function analyzeLabels() {
     };
   }
   
-  console.log('🤖 Generating intelligent mappings with AI...');
+  console.log('🤖 Generating intelligent mappings with GitHub Copilot...');
   
   // Extract custom prompt from comment body if present
   const customPrompt = extractCustomPrompt(COMMENT_BODY);
@@ -87,8 +87,8 @@ async function analyzeLabels() {
     console.log(`📝 Using custom prompt: ${customPrompt}`);
   }
   
-  // Use GitHub Models AI provider
-  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN, {
+  // Use GitHub Copilot AI provider
+  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN, {
     customPrompt: customPrompt,
     octokit: octokit
   });
@@ -130,8 +130,8 @@ async function refineMappings() {
   
   const { analysis, mappings } = state;
   
-  // Use AI to refine based on feedback
-  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN, {
+  // Use GitHub Copilot AI to refine based on feedback
+  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN, {
     octokit: octokit
   });
   const aiMapper = new AIMapper(aiProvider);
