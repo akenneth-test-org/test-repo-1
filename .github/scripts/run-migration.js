@@ -7,7 +7,6 @@
 import { Octokit } from '@octokit/rest';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { LabelAnalyzer } from '../../src/label-analyzer.js';
-import { AIMapper, GitHubCopilotProvider } from '../../src/ai-mapper.js';
 import { MigrationExecutor } from '../../src/migration-executor.js';
 
 const COMMAND = process.env.COMMAND;
@@ -82,21 +81,10 @@ async function analyzeLabels() {
     };
   }
   
-  console.log('🤖 Generating intelligent mappings with GitHub Copilot...');
+  console.log('🤖 Generating rule-based mappings...');
   
-  // Extract custom prompt from comment body if present
-  const customPrompt = extractCustomPrompt(COMMENT_BODY);
-  if (customPrompt) {
-    console.log(`📝 Using custom prompt: ${customPrompt}`);
-  }
-  
-  // Use GitHub Copilot AI provider
-  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN, {
-    customPrompt: customPrompt
-  });
-  
-  const aiMapper = new AIMapper(aiProvider);
-  const mappings = await aiMapper.generateMappings(analysis);
+  // Use rule-based mapping (user can override with Copilot-generated mappings)
+  const mappings = generateDefaultMappings(analysis);
   
   // Save state for next interaction
   saveState({
@@ -202,10 +190,8 @@ async function refineMappings() {
   
   const { analysis, mappings } = state;
   
-  // Use GitHub Copilot AI to refine based on feedback
-  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN);
-  const aiMapper = new AIMapper(aiProvider);
-  const updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
+  // Use rule-based refinement based on user feedback
+  const updatedMappings = parseRefinementFeedback(COMMENT_BODY, mappings, analysis);
   
   // Save updated state
   saveState({
