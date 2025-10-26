@@ -101,7 +101,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ steps.parse.outputs.issue_number }},
+              issue_number: '${{ steps.parse.outputs.issue_number }}',
               body: result.message || JSON.stringify(result, null, 2)
             });
       
@@ -113,6 +113,6 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ steps.parse.outputs.issue_number }},
+              issue_number: '${{ steps.parse.outputs.issue_number }}',
               body: '❌ Migration cancelled. No changes were made.'
             });
