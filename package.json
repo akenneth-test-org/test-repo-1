@@ -1,0 +1,29 @@
+{
+  "name": "issue-fields-migrator",
+  "version": "1.0.0",
+  "description": "GitHub Copilot Extension for migrating labels to issue fields",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/**/*.test.js",
+    "test:integration": "node test.js"
+  },
+  "keywords": [
+    "github",
+    "copilot",
+    "extension",
+    "issues",
+    "labels",
+    "migration"
+  ],
+  "author": "GitHub",
+  "license": "MIT",
+  "dependencies": {
+    "@octokit/auth-app": "^6.1.4",
+    "@octokit/rest": "^20.0.0",
+    "dotenv": "^16.6.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
