@@ -548,13 +548,13 @@ async function reviewUpdatedPreview() {
   console.log('Reviewing updated preview...');
   
   const state = loadState();
-  if (!state.preview || !state.proposedMappings) {
+  if (!state.preview || !state.mappings) {
     throw new Error('No preview available.');
   }
   
   // Regenerate preview with overrides
   const executor = new MigrationExecutor(octokit, owner, repo);
-  const updatedPreview = await executor.previewWithOverrides(state.proposedMappings, state.overrides || {});
+  const updatedPreview = await executor.previewWithOverrides(state.mappings, state.overrides || {});
   
   // Format message
   let message = '## 📋 Updated Migration Preview\n\n';
