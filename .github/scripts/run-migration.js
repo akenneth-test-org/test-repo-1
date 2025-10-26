@@ -569,6 +569,31 @@ async function reviewUpdatedPreview() {
     message += '\n';
   }
   
+  // Full issue table
+  if (updatedPreview.examples.length > 0) {
+    message += '### All Issues to be Updated\n\n';
+    message += '| Issue | Title | Labels | Field Changes |\n';
+    message += '|-------|-------|--------|---------------|\n';
+    
+    updatedPreview.examples.forEach(ex => {
+      const issueLink = `#${ex.number}`;
+      const title = ex.title.substring(0, 50) + (ex.title.length > 50 ? '...' : '');
+      const labels = ex.labels.join(', ');
+      const changes = Object.entries(ex.changes).map(([k, v]) => `${k}=${v}`).join(', ');
+      
+      // Mark overridden issues with asterisk
+      const isOverridden = state.overrides && state.overrides[ex.number];
+      const marker = isOverridden ? '*' : '';
+      
+      message += `| ${issueLink} | ${title} | ${labels} | ${changes}${marker} |\n`;
+    });
+    message += '\n';
+    
+    if (state.overrides && Object.keys(state.overrides).length > 0) {
+      message += '*Modified by user override\n\n';
+    }
+  }
+  
   // Overrides summary
   if (state.overrides && Object.keys(state.overrides).length > 0) {
     message += '### 🔧 Manual Overrides\n';
