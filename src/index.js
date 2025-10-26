@@ -12,6 +12,7 @@ import { LabelAnalyzer } from './label-analyzer.js';
 import { FieldMapper } from './field-mapper.js';
 import { AIMapper } from './ai-mapper.js';
 import { MigrationExecutor } from './migration-executor.js';
+import fs from 'fs/promises';
 
 /**
  * Main entry point for the Copilot Extension agent
@@ -71,9 +72,9 @@ async function main() {
         '## 📊 Proposed Label → Field Mappings\n\n' +
         mappingSummary +
         '\n\n**What would you like to do?**\n' +
-        '1. ✅ Accept these mappings and preview changes\n' +
-        '2. ✏️ Modify mappings (tell me which labels to map differently)\n' +
-        '3. ❌ Cancel migration'
+        '1. Comment **"@issue-fields-migrator accept"** to preview changes\n' +
+        '2. Comment **"@issue-fields-migrator Map <label> to <value> instead"** to modify mappings\n' +
+        '3. Comment **"@issue-fields-migrator cancel"** to stop'
       );
 
       // Store state for conversation continuity
@@ -151,8 +152,8 @@ async function handleMappingReview(context, message, analysis, proposedMappings)
       previewSummary +
       '\n\n⚠️ **This will modify ' + preview.totalIssues + ' issues**\n\n' +
       '**Ready to execute?**\n' +
-      '- Type **"execute migration"** to proceed\n' +
-      '- Type **"cancel"** to abort\n\n' +
+      '- Comment **"@issue-fields-migrator execute migration"** to proceed\n' +
+      '- Comment **"@issue-fields-migrator cancel"** to abort\n\n' +
       '*(The original labels will remain on issues after migration)*'
     );
 
@@ -195,12 +196,13 @@ async function handleMappingReview(context, message, analysis, proposedMappings)
 
   const mappingSummary = formatMappingSummary(updatedMappings, analysis);
   await context.sendMessage(
-    '## 📊 Updated Mappings\n\n' +
+    '🤖 Updated mappings based on your feedback:\n\n' +
+    '## 📊 Proposed Label → Field Mappings\n\n' +
     mappingSummary +
     '\n\n**What would you like to do?**\n' +
-    '1. ✅ Accept these mappings and preview changes\n' +
-    '2. ✏️ Make more changes (tell me what to adjust)\n' +
-    '3. ❌ Cancel migration'
+    '1. Comment **"@issue-fields-migrator accept"** to preview changes\n' +
+    '2. Comment more feedback to further modify\n' +
+    '3. Comment **"@issue-fields-migrator cancel"** to stop'
   );
 
   context.setState(conversationId, {
@@ -225,14 +227,25 @@ async function handlePreviewResponse(context, message, state) {
     const executor = new MigrationExecutor(octokit, owner, repo);
     const result = await executor.execute(proposedMappings);
 
+    // Generate detailed results table
+    const resultsTable = formatResultsTable(result);
+    
+    // Save as artifact
+    const artifactPath = `.migration-results-${Date.now()}.md`;
+    await fs.writeFile(artifactPath, resultsTable);
+
     await context.sendMessage(
       '## ✅ Migration Complete!\n\n' +
       `- **${result.successCount}** issues updated successfully\n` +
-      `- **${result.failureCount}** issues failed (check logs)\n` +
+      `- **${result.failureCount}** issues failed\n` +
       `- **${result.skippedCount}** issues skipped\n\n` +
-      '### What Changed\n' +
+      '### Updated Fields\n' +
       formatResultSummary(result) +
-      '\n\n🎉 Your labels have been migrated to issue fields!'
+      '\n\n### All Updated Issues\n\n' +
+      resultsTable +
+      '\n\n' +
+      (result.errors.length > 0 ? '### Errors\n' + result.errors.map(e => `- Issue #${e.issue}: ${e.error}`).join('\n') + '\n\n' : '') +
+      '🎉 Your labels have been migrated to issue fields!'
     );
 
     context.clearState(conversationId);
@@ -248,7 +261,7 @@ async function handlePreviewResponse(context, message, state) {
 
   // Unclear response
   await context.sendMessage(
-    '⚠️ Please explicitly type **"execute migration"** to proceed, or **"cancel"** to abort.\n\n' +
+    '⚠️ Please explicitly comment **"@issue-fields-migrator execute migration"** to proceed, or **"@issue-fields-migrator cancel"** to abort.\n\n' +
     'This ensures you understand that ' + preview.totalIssues + ' issues will be modified.'
   );
 }
@@ -304,11 +317,16 @@ function formatPreviewSummary(preview) {
   }
 
   if (preview.examples.length > 0) {
-    summary += '### Example Issues\n';
-    for (const example of preview.examples.slice(0, 5)) {
-      summary += `- #${example.number}: ${example.title}\n`;
-      summary += `  - Labels: ${example.labels.join(', ')}\n`;
-      summary += `  - Will set: ${formatFieldChanges(example.changes)}\n`;
+    summary += '### All Issues to be Updated\n\n';
+    summary += '| Issue | Title | Labels | Field Changes |\n';
+    summary += '|-------|-------|--------|---------------|\n';
+    
+    for (const example of preview.examples) {
+      const issueLink = `#${example.number}`;
+      const title = example.title.substring(0, 50) + (example.title.length > 50 ? '...' : '');
+      const labels = example.labels.join(', ');
+      const changes = formatFieldChanges(example.changes);
+      summary += `| ${issueLink} | ${title} | ${labels} | ${changes} |\n`;
     }
   }
 
@@ -335,6 +353,28 @@ function formatResultSummary(result) {
   }
 
   return summary;
+}
+
+/**
+ * Format detailed results table for all updated issues
+ */
+function formatResultsTable(result) {
+  if (!result.updatedIssues || result.updatedIssues.length === 0) {
+    return '*No issues were updated*';
+  }
+
+  let table = '| Issue | Title | Fields Updated | Status |\n';
+  table += '|-------|-------|----------------|--------|\n';
+  
+  for (const update of result.updatedIssues) {
+    const issueLink = `#${update.number}`;
+    const title = update.title.substring(0, 50) + (update.title.length > 50 ? '...' : '');
+    const fields = formatFieldChanges(update.changes);
+    const status = update.success ? '✅' : '❌';
+    table += `| ${issueLink} | ${title} | ${fields} | ${status} |\n`;
+  }
+
+  return table;
 }
 
 /**

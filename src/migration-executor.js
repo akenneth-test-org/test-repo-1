@@ -62,7 +62,8 @@ export class MigrationExecutor {
       failureCount: 0,
       skippedCount: 0,
       byField: {},
-      errors: []
+      errors: [],
+      updatedIssues: []
     };
     
     console.log(`Migrating ${affectedIssues.length} issues...`);
@@ -81,6 +82,12 @@ export class MigrationExecutor {
         await this.applyChanges(issue, changes);
         
         result.successCount++;
+        result.updatedIssues.push({
+          number: issue.number,
+          title: issue.title,
+          changes: changes,
+          success: true
+        });
         
         // Count by field
         for (const fieldName of Object.keys(changes)) {
@@ -97,6 +104,12 @@ export class MigrationExecutor {
         
       } catch (error) {
         result.failureCount++;
+        result.updatedIssues.push({
+          number: issue.number,
+          title: issue.title,
+          changes: this.calculateChanges(issue, mappings),
+          success: false
+        });
         result.errors.push({
           issue: issue.number,
           error: error.message
