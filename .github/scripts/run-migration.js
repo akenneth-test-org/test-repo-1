@@ -7,7 +7,7 @@
 import { Octokit } from '@octokit/rest';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { LabelAnalyzer } from '../../src/label-analyzer.js';
-import { AIMapper, MockLLMProvider } from '../../src/ai-mapper.js';
+import { AIMapper, GitHubModelsProvider } from '../../src/ai-mapper.js';
 import { MigrationExecutor } from '../../src/migration-executor.js';
 
 const COMMAND = process.env.COMMAND;
@@ -79,14 +79,20 @@ async function analyzeLabels() {
     };
   }
   
-  console.log('🤖 Generating intelligent mappings...');
+  console.log('🤖 Generating intelligent mappings with AI...');
   
-  // Use mock AI for now (can be replaced with real OpenAI)
-  const mockProvider = new MockLLMProvider({
-    generateMappings: generateDefaultMappings(analysis)
+  // Extract custom prompt from comment body if present
+  const customPrompt = extractCustomPrompt(COMMENT_BODY);
+  if (customPrompt) {
+    console.log(`📝 Using custom prompt: ${customPrompt}`);
+  }
+  
+  // Use GitHub Models AI provider
+  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN, {
+    customPrompt: customPrompt
   });
   
-  const aiMapper = new AIMapper(mockProvider);
+  const aiMapper = new AIMapper(aiProvider);
   const mappings = await aiMapper.generateMappings(analysis);
   
   // Save state for next interaction
@@ -124,11 +130,8 @@ async function refineMappings() {
   const { analysis, mappings } = state;
   
   // Use AI to refine based on feedback
-  const mockProvider = new MockLLMProvider({
-    refineMappings: parseRefinementFeedback(COMMENT_BODY, mappings, analysis)
-  });
-  
-  const aiMapper = new AIMapper(mockProvider);
+  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN);
+  const aiMapper = new AIMapper(aiProvider);
   const updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
   
   // Save updated state
@@ -296,6 +299,32 @@ function clearState() {
     state.completed = true;
     writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   }
+}
+
+function extractCustomPrompt(commentBody) {
+  if (!commentBody) return null;
+  
+  // Look for patterns like "with prompt: ..." or "using instructions: ..."
+  const promptPattern = /(?:with prompt|using instructions?|custom prompt):?\s*["']?([^"'\n]+)["']?/i;
+  const match = commentBody.match(promptPattern);
+  
+  if (match) {
+    return match[1].trim();
+  }
+  
+  // If the comment contains "analyze" command followed by text, use that as prompt
+  const analyzePattern = /@issue-fields-migrator\s+analyze\s+(.+)/i;
+  const analyzeMatch = commentBody.match(analyzePattern);
+  
+  if (analyzeMatch) {
+    const rest = analyzeMatch[1].trim();
+    // If it's not just a command, treat as custom prompt
+    if (rest && !rest.match(/^(accept|cancel|preview|execute)/i)) {
+      return rest;
+    }
+  }
+  
+  return null;
 }
 
 function generateDefaultMappings(analysis) {

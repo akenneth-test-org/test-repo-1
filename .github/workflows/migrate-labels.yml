@@ -18,6 +18,10 @@ on:
       issue_number:
         description: 'Issue number for posting results'
         required: true
+      custom_prompt:
+        description: 'Custom AI prompt (optional)'
+        required: false
+        default: ''
 
 jobs:
   migrate-labels:

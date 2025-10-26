@@ -294,6 +294,177 @@ Generate the updated mappings:`;
 }
 
 /**
+ * GitHub Models LLM Provider (uses GitHub's AI models including GPT-4)
+ */
+export class GitHubModelsProvider {
+  constructor(githubToken, options = {}) {
+    this.githubToken = githubToken;
+    this.model = options.model || 'gpt-4o';
+    this.baseURL = 'https://models.github.com/v1';
+    this.customPrompt = options.customPrompt || '';
+  }
+
+  async generateMappings(context) {
+    const prompt = this.buildMappingPrompt(context);
+
+    const response = await fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.githubToken}`
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    return JSON.parse(content);
+  }
+
+  async refineMappings(context) {
+    const prompt = this.buildRefinementPrompt(context);
+
+    const response = await fetch(`${this.baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.githubToken}`
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0].message.content;
+    return JSON.parse(content);
+  }
+
+  buildMappingPrompt(context) {
+    let prompt = `You are helping migrate GitHub issue labels to structured issue fields.
+
+**Available Issue Fields:**
+${JSON.stringify(context.fields, null, 2)}
+
+**Repository Labels (grouped by pattern):**
+${JSON.stringify(context.labels, null, 2)}
+
+**Task:**
+Analyze the labels and create intelligent mappings to the available fields.`;
+
+    if (this.customPrompt) {
+      prompt += `\n\n**User Instructions:**\n${this.customPrompt}`;
+    }
+
+    prompt += `
+
+**Rules:**
+1. Map labels to the most semantically appropriate field
+2. Match label values to field options based on meaning, not just text
+3. For priority/severity labels: map numbers/levels appropriately (1=highest, larger numbers=lower)
+4. Consider color meanings (red=high priority, green=low priority, etc.)
+5. Only map labels that clearly belong to a structured field
+6. Don't map generic labels like "bug", "feature", "documentation"
+7. Follow any user instructions provided above
+
+**Response Format (JSON only):**
+{
+  "FieldName": {
+    "label-name": "FieldValue",
+    "another-label": "AnotherValue"
+  }
+}
+
+**Example:**
+If there are labels "priority-1", "priority-2" and a Priority field with options P0, P1, P2:
+{
+  "Priority": {
+    "priority-1": "P1",
+    "priority-2": "P2"
+  }
+}
+
+Generate the mappings:`;
+    return prompt;
+  }
+
+  buildRefinementPrompt(context) {
+    return `You are helping refine GitHub issue label to field mappings based on user feedback.
+
+**Current Mappings:**
+${JSON.stringify(context.currentMappings, null, 2)}
+
+**Available Fields:**
+${JSON.stringify(context.availableFields.map(f => ({
+  name: f.name,
+  description: f.description,
+  options: f.options?.map(o => o.name)
+})), null, 2)}
+
+**Available Labels:**
+${context.structuredLabels.map(l => l.name).join(', ')}
+
+**User Feedback:**
+"${context.userFeedback}"
+
+**Task:**
+Update the mappings based on the user's feedback. The user might:
+- Want to change which field a label maps to
+- Want to change which value a label maps to
+- Want to add new mappings
+- Want to remove mappings
+- Want to exclude certain labels
+
+Parse the natural language feedback and update the mappings accordingly.
+
+**Response Format (JSON only):**
+{
+  "FieldName": {
+    "label-name": "FieldValue"
+  }
+}
+
+Generate the updated mappings:`;
+  }
+}
+
+/**
  * Mock LLM Provider for testing
  */
 export class MockLLMProvider {
