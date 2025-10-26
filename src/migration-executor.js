@@ -19,7 +19,12 @@ export class MigrationExecutor {
     const preview = {
       totalIssues: affectedIssues.length,
       byField: {},
-      examples: []
+      examples: [],
+      affectedIssues: affectedIssues.map(issue => ({
+        number: issue.number,
+        title: issue.title,
+        labels: issue.labels.map(l => l.name)
+      }))
     };
     
     for (const issue of affectedIssues) {
@@ -51,10 +56,69 @@ export class MigrationExecutor {
   }
 
   /**
-   * Execute the actual migration with optional progress callback
+   * Preview the migration with user overrides
+   */
+  async previewWithOverrides(mappings, overrides = {}) {
+    const affectedIssues = await this.findAffectedIssues(mappings);
+    
+    const preview = {
+      totalIssues: 0,
+      byField: {},
+      examples: [],
+      affectedIssues: affectedIssues.map(issue => ({
+        number: issue.number,
+        title: issue.title,
+        labels: issue.labels.map(l => l.name)
+      }))
+    };
+    
+    for (const issue of affectedIssues) {
+      // Skip if user requested
+      if (overrides[issue.number]?._skip) {
+        continue;
+      }
+
+      let changes = this.calculateChanges(issue, mappings);
+      
+      // Apply user overrides
+      if (overrides[issue.number]) {
+        const issueOverrides = { ...overrides[issue.number] };
+        delete issueOverrides._skip;
+        changes = { ...changes, ...issueOverrides };
+      }
+      
+      preview.totalIssues++;
+      
+      // Count by field
+      for (const [fieldName, value] of Object.entries(changes)) {
+        if (!preview.byField[fieldName]) {
+          preview.byField[fieldName] = {};
+        }
+        if (!preview.byField[fieldName][value]) {
+          preview.byField[fieldName][value] = 0;
+        }
+        preview.byField[fieldName][value]++;
+      }
+      
+      // Add to examples (first 10)
+      if (preview.examples.length < 10) {
+        preview.examples.push({
+          number: issue.number,
+          title: issue.title,
+          labels: issue.labels.map(l => l.name),
+          changes
+        });
+      }
+    }
+    
+    return preview;
+  }
+
+  /**
+   * Execute the actual migration with optional progress callback and overrides
    */
   async execute(mappings, options = {}) {
-    const { onProgress } = options;
+    const { onProgress, overrides = {} } = options;
     const affectedIssues = await this.findAffectedIssues(mappings);
     
     const result = {
@@ -72,7 +136,20 @@ export class MigrationExecutor {
       const issue = affectedIssues[i];
       
       try {
-        const changes = this.calculateChanges(issue, mappings);
+        // Skip if user requested
+        if (overrides[issue.number]?._skip) {
+          result.skippedCount++;
+          continue;
+        }
+
+        let changes = this.calculateChanges(issue, mappings);
+        
+        // Apply user overrides
+        if (overrides[issue.number]) {
+          const issueOverrides = { ...overrides[issue.number] };
+          delete issueOverrides._skip;
+          changes = { ...changes, ...issueOverrides };
+        }
         
         if (Object.keys(changes).length === 0) {
           result.skippedCount++;

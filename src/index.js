@@ -105,6 +105,8 @@ async function main() {
       return await handleMappingReview(context, message, analysis, proposedMappings);
     } else if (step === 'preview_changes') {
       return await handlePreviewResponse(context, message, state);
+    } else if (step === 'modify_preview') {
+      return await handlePreviewModification(context, message, state);
     }
   });
 
@@ -151,8 +153,9 @@ async function handleMappingReview(context, message, analysis, proposedMappings)
       '## 📋 Migration Preview\n\n' +
       previewSummary +
       '\n\n⚠️ **This will modify ' + preview.totalIssues + ' issues**\n\n' +
-      '**Ready to execute?**\n' +
+      '**What would you like to do?**\n' +
       '- Comment **"@issue-fields-migrator execute migration"** to proceed\n' +
+      '- Comment **"@issue-fields-migrator modify"** to adjust field values for specific issues\n' +
       '- Comment **"@issue-fields-migrator cancel"** to abort\n\n' +
       '*(The original labels will remain on issues after migration)*'
     );
@@ -161,7 +164,8 @@ async function handleMappingReview(context, message, analysis, proposedMappings)
       step: 'preview_changes',
       analysis,
       proposedMappings,
-      preview
+      preview,
+      affectedIssues: preview.affectedIssues
     });
     return;
   }
@@ -217,7 +221,7 @@ async function handleMappingReview(context, message, analysis, proposedMappings)
  */
 async function handlePreviewResponse(context, message, state) {
   const { octokit, owner, repo, conversationId } = context;
-  const { proposedMappings, preview } = state;
+  const { proposedMappings, preview, analysis, affectedIssues } = state;
   const lowerMessage = message.toLowerCase();
 
   // User explicitly confirms execution
@@ -225,7 +229,9 @@ async function handlePreviewResponse(context, message, state) {
     await context.sendMessage('🚀 Starting migration... This may take a few minutes.');
 
     const executor = new MigrationExecutor(octokit, owner, repo);
-    const result = await executor.execute(proposedMappings);
+    const result = await executor.execute(proposedMappings, { 
+      overrides: state.overrides || {} 
+    });
 
     // Generate detailed results table
     const resultsTable = formatResultsTable(result);
@@ -259,11 +265,155 @@ async function handlePreviewResponse(context, message, state) {
     return;
   }
 
+  // User wants to modify preview
+  if (lowerMessage.includes('modify') || lowerMessage.includes('change') || lowerMessage.includes('adjust')) {
+    await context.sendMessage(
+      '✏️ You can now modify field values for specific issues.\n\n' +
+      '**Examples:**\n' +
+      '- "Set issue #42 Priority to P0"\n' +
+      '- "Change issue #15 Status to In Progress"\n' +
+      '- "Don\'t update issue #23"\n' +
+      '- "Set issues #10, #11, #12 Priority to Critical"\n\n' +
+      'Type **"done"** when finished, or **"back"** to see the preview again.'
+    );
+    
+    context.setState(conversationId, {
+      step: 'modify_preview',
+      analysis,
+      proposedMappings,
+      preview,
+      affectedIssues,
+      overrides: state.overrides || {}
+    });
+    return;
+  }
+
   // Unclear response
   await context.sendMessage(
-    '⚠️ Please explicitly comment **"@issue-fields-migrator execute migration"** to proceed, or **"@issue-fields-migrator cancel"** to abort.\n\n' +
-    'This ensures you understand that ' + preview.totalIssues + ' issues will be modified.'
+    '⚠️ Please choose an option:\n' +
+    '- **"@issue-fields-migrator execute migration"** to proceed\n' +
+    '- **"@issue-fields-migrator modify"** to adjust field values\n' +
+    '- **"@issue-fields-migrator cancel"** to abort\n\n' +
+    'This will modify ' + preview.totalIssues + ' issues.'
   );
+}
+
+/**
+ * Handle user modifications to preview
+ */
+async function handlePreviewModification(context, message, state) {
+  const { conversationId } = context;
+  const { proposedMappings, preview, analysis, affectedIssues, overrides } = state;
+  const lowerMessage = message.toLowerCase();
+
+  // User is done with modifications
+  if (lowerMessage === 'done' || lowerMessage.includes('finished')) {
+    // Apply overrides to mappings
+    const modifiedMappings = applyOverridesToMappings(proposedMappings, overrides, affectedIssues);
+    
+    // Regenerate preview with modifications
+    await context.sendMessage('🔄 Regenerating preview with your modifications...');
+    const executor = new MigrationExecutor(context.octokit, context.owner, context.repo);
+    const updatedPreview = await executor.previewWithOverrides(modifiedMappings, overrides);
+    
+    const previewSummary = formatPreviewSummary(updatedPreview);
+    const overridesSummary = formatOverridesSummary(overrides);
+    
+    await context.sendMessage(
+      '## 📋 Updated Migration Preview\n\n' +
+      previewSummary +
+      '\n\n' +
+      (Object.keys(overrides).length > 0 ? '### 🔧 Manual Overrides\n' + overridesSummary + '\n\n' : '') +
+      '⚠️ **This will modify ' + updatedPreview.totalIssues + ' issues**\n\n' +
+      '**What would you like to do?**\n' +
+      '- Comment **"@issue-fields-migrator execute migration"** to proceed\n' +
+      '- Comment **"@issue-fields-migrator modify"** to make more changes\n' +
+      '- Comment **"@issue-fields-migrator cancel"** to abort'
+    );
+    
+    context.setState(conversationId, {
+      step: 'preview_changes',
+      analysis,
+      proposedMappings: modifiedMappings,
+      preview: updatedPreview,
+      affectedIssues,
+      overrides
+    });
+    return;
+  }
+
+  // User wants to go back to preview
+  if (lowerMessage === 'back' || lowerMessage.includes('preview')) {
+    const previewSummary = formatPreviewSummary(preview);
+    await context.sendMessage(
+      '## 📋 Migration Preview\n\n' +
+      previewSummary +
+      '\n\nComment **"modify"** to make changes again.'
+    );
+    
+    context.setState(conversationId, {
+      step: 'preview_changes',
+      analysis,
+      proposedMappings,
+      preview,
+      affectedIssues,
+      overrides
+    });
+    return;
+  }
+
+  // Parse modification instructions
+  const aiMapper = context.aiMapper || new AIMapper();
+  let parsedOverride;
+  
+  try {
+    // Try AI parsing first
+    parsedOverride = await aiMapper.parsePreviewModification(message, preview, analysis);
+  } catch (error) {
+    // Fallback to manual parsing
+    console.warn('AI parsing failed, using manual:', error.message);
+    parsedOverride = await parsePreviewModification(message, affectedIssues, analysis);
+  }
+
+  if (!parsedOverride) {
+    await context.sendMessage(
+      '❌ I couldn\'t understand that modification. Please try:\n' +
+      '- "Set issue #42 Priority to P0"\n' +
+      '- "Change issue #15 Status to In Progress"\n' +
+      '- "Don\'t update issue #23"\n' +
+      '- "Set issues #10, #11, #12 Priority to Critical"'
+    );
+    return;
+  }
+
+  // Apply the override
+  for (const issueNumber of parsedOverride.issues) {
+    if (!overrides[issueNumber]) {
+      overrides[issueNumber] = {};
+    }
+    
+    if (parsedOverride.action === 'skip') {
+      overrides[issueNumber]._skip = true;
+    } else if (parsedOverride.action === 'set') {
+      overrides[issueNumber][parsedOverride.fieldName] = parsedOverride.fieldValue;
+    }
+  }
+
+  // Confirm the modification
+  const confirmationMessage = formatModificationConfirmation(parsedOverride);
+  await context.sendMessage(
+    '✅ ' + confirmationMessage + '\n\n' +
+    'Continue making changes, or type **"done"** to review the updated preview.'
+  );
+
+  context.setState(conversationId, {
+    step: 'modify_preview',
+    analysis,
+    proposedMappings,
+    preview,
+    affectedIssues,
+    overrides
+  });
 }
 
 /**
@@ -398,6 +548,98 @@ async function parseCustomMappings(message, analysis) {
   }
   
   return null;
+}
+
+/**
+ * Parse preview modification instructions
+ */
+async function parsePreviewModification(message, affectedIssues, analysis) {
+  // Parse "Set issue #42 Priority to P0" or "Don't update issue #23"
+  
+  // Skip pattern: "Don't update issue #X"
+  const skipMatch = message.match(/(?:don'?t|skip)\s+(?:update\s+)?issue\s+#?(\d+(?:,\s*#?\d+)*)/i);
+  if (skipMatch) {
+    const issueNumbers = skipMatch[1].split(',').map(n => parseInt(n.replace('#', '').trim()));
+    return {
+      action: 'skip',
+      issues: issueNumbers
+    };
+  }
+
+  // Set pattern: "Set issue #42 Priority to P0" or "Change issue #15 Status to In Progress"
+  const setMatch = message.match(/(?:set|change)\s+issue(?:s)?\s+#?(\d+(?:,\s*#?\d+)*)\s+(.+?)\s+to\s+(.+)/i);
+  if (setMatch) {
+    const issueNumbers = setMatch[1].split(',').map(n => parseInt(n.replace('#', '').trim()));
+    const fieldName = setMatch[2].trim();
+    const fieldValue = setMatch[3].trim();
+    
+    // Validate field exists
+    const field = analysis.availableFields.find(f => 
+      f.name.toLowerCase() === fieldName.toLowerCase()
+    );
+    
+    if (!field) {
+      return null;
+    }
+    
+    return {
+      action: 'set',
+      issues: issueNumbers,
+      fieldName: field.name,
+      fieldValue
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Apply overrides to proposed mappings
+ */
+function applyOverridesToMappings(mappings, overrides, affectedIssues) {
+  // Overrides are applied at execution time, so we return mappings unchanged
+  // but store them for later use
+  return mappings;
+}
+
+/**
+ * Format overrides summary
+ */
+function formatOverridesSummary(overrides) {
+  const entries = Object.entries(overrides);
+  if (entries.length === 0) return '';
+
+  let summary = '';
+  for (const [issueNumber, changes] of entries) {
+    if (changes._skip) {
+      summary += `- Issue #${issueNumber}: **Skip** (will not be updated)\n`;
+    } else {
+      const changesList = Object.entries(changes)
+        .filter(([k]) => k !== '_skip')
+        .map(([field, value]) => `${field}=${value}`)
+        .join(', ');
+      summary += `- Issue #${issueNumber}: ${changesList}\n`;
+    }
+  }
+  
+  return summary;
+}
+
+/**
+ * Format modification confirmation
+ */
+function formatModificationConfirmation(parsedOverride) {
+  const issueList = parsedOverride.issues.length === 1 
+    ? `Issue #${parsedOverride.issues[0]}`
+    : `Issues #${parsedOverride.issues.join(', #')}`;
+
+  if (parsedOverride.action === 'skip') {
+    return `${issueList} will be skipped.`;
+  } else if (parsedOverride.action === 'set') {
+    return `${issueList} ${parsedOverride.fieldName} will be set to **${parsedOverride.fieldValue}**.`;
+  }
+  
+  return 'Modification applied.';
 }
 
 // Start the agent

@@ -45,6 +45,41 @@ export class AIMapper {
   }
 
   /**
+   * Parse user modifications to preview
+   */
+  async parsePreviewModification(userMessage, preview, analysis) {
+    const context = {
+      userMessage,
+      preview,
+      availableFields: analysis.availableFields,
+      affectedIssues: preview.affectedIssues
+    };
+
+    // Ask LLM to parse the modification request
+    const parsed = await this.llmProvider.parsePreviewModification(context);
+    
+    // Validate the parsed result
+    if (!parsed || !parsed.action || !parsed.issues) {
+      return null;
+    }
+
+    // Ensure field exists if it's a "set" action
+    if (parsed.action === 'set') {
+      const field = analysis.availableFields.find(f => 
+        f.name.toLowerCase() === parsed.fieldName?.toLowerCase()
+      );
+      
+      if (!field) {
+        return null;
+      }
+      
+      parsed.fieldName = field.name;
+    }
+
+    return parsed;
+  }
+
+  /**
    * Prepare context for LLM
    */
   prepareContext(labels, fields, labelGroups) {
