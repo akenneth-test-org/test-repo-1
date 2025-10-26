@@ -65,7 +65,9 @@ jobs:
             
             // Parse command
             let command = 'analyze';
-            if (comment.includes('accept') || comment.includes('preview')) {
+            if (comment.includes('use mapping')) {
+              command = 'use-mapping';
+            } else if (comment.includes('accept') || comment.includes('preview')) {
               command = 'preview';
             } else if (comment.includes('execute migration')) {
               command = 'execute';

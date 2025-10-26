@@ -36,6 +36,9 @@ async function main() {
       case 'analyze':
         result = await analyzeLabels();
         break;
+      case 'use-mapping':
+        result = await useCustomMapping();
+        break;
       case 'refine':
         result = await refineMappings();
         break;
@@ -110,11 +113,81 @@ async function analyzeLabels() {
   message += '\n**What would you like to do?**\n';
   message += '1. Comment **"@issue-fields-migrator accept"** to preview changes\n';
   message += '2. Comment **"@issue-fields-migrator Map <label> to <value> instead"** to modify mappings\n';
-  message += '3. Comment **"@issue-fields-migrator cancel"** to stop';
+  message += '3. Use GitHub Copilot for intelligent mapping:\n';
+  message += '   - Go to [github.com/copilot](https://github.com/copilot)\n';
+  message += '   - Use the prompt from [COPILOT_PROMPT.md](../blob/main/COPILOT_PROMPT.md)\n';
+  message += '   - Comment **"@issue-fields-migrator use mapping"** with the JSON result\n';
+  message += '4. Comment **"@issue-fields-migrator cancel"** to stop';
   
   return {
     success: true,
     command: 'analyze',
+    message
+  };
+}
+
+async function useCustomMapping() {
+  console.log('📥 Using custom Copilot-generated mapping...');
+  
+  const state = loadState();
+  if (!state || !state.analysis) {
+    throw new Error('No active migration found. Start with @issue-fields-migrator analyze');
+  }
+  
+  const { analysis } = state;
+  
+  // Extract JSON from comment body
+  const jsonMatch = COMMENT_BODY.match(/```json\s*([\s\S]*?)\s*```/);
+  if (!jsonMatch) {
+    return {
+      success: false,
+      command: 'use-mapping',
+      message: '❌ Could not find JSON mapping in your comment.\n\nPlease format it as:\n```json\n{\n  "FieldName": {\n    "label": "value"\n  }\n}\n```'
+    };
+  }
+  
+  let mappings;
+  try {
+    mappings = JSON.parse(jsonMatch[1]);
+  } catch (error) {
+    return {
+      success: false,
+      command: 'use-mapping',
+      message: `❌ Invalid JSON format: ${error.message}\n\nPlease check your JSON syntax.`
+    };
+  }
+  
+  // Validate mappings against available fields
+  const availableFieldNames = analysis.availableFields.map(f => f.name);
+  const invalidFields = Object.keys(mappings).filter(f => !availableFieldNames.includes(f));
+  
+  if (invalidFields.length > 0) {
+    return {
+      success: false,
+      command: 'use-mapping',
+      message: `❌ Invalid fields: ${invalidFields.join(', ')}\n\nAvailable fields: ${availableFieldNames.join(', ')}`
+    };
+  }
+  
+  // Save updated state
+  saveState({
+    step: 'review_mappings',
+    analysis,
+    mappings
+  });
+  
+  // Format response
+  let message = '✅ Custom Copilot mapping applied!\n\n';
+  message += '## 📊 Your Custom Mappings\n\n';
+  message += formatMappingsMessage(mappings, analysis);
+  message += '\n**What would you like to do?**\n';
+  message += '1. Comment **"@issue-fields-migrator accept"** to preview changes\n';
+  message += '2. Comment more feedback to further modify\n';
+  message += '3. Comment **"@issue-fields-migrator cancel"** to stop';
+  
+  return {
+    success: true,
+    command: 'use-mapping',
     message
   };
 }
