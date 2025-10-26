@@ -76,6 +76,15 @@ jobs:
             core.setOutput('issue_number', issueNumber);
             core.setOutput('comment_body', comment);
       
+      - name: Restore migration state
+        if: steps.parse.outputs.command != 'analyze'
+        uses: actions/cache/restore@v4
+        with:
+          path: .migration-state-${{ steps.parse.outputs.issue_number }}.json
+          key: migration-state-${{ steps.parse.outputs.issue_number }}
+          restore-keys: |
+            migration-state-${{ steps.parse.outputs.issue_number }}
+      
       - name: Run migration command
         id: migrate
         env:
@@ -86,6 +95,13 @@ jobs:
           COMMENT_BODY: ${{ steps.parse.outputs.comment_body }}
         run: |
           node .github/scripts/run-migration.js
+      
+      - name: Save migration state
+        if: always() && steps.parse.outputs.command != 'execute' && steps.parse.outputs.command != 'cancel'
+        uses: actions/cache/save@v4
+        with:
+          path: .migration-state-${{ steps.parse.outputs.issue_number }}.json
+          key: migration-state-${{ steps.parse.outputs.issue_number }}-${{ github.run_id }}
       
       - name: Post results as comment
         if: always() && steps.parse.outputs.command != 'cancel'
