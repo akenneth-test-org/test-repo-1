@@ -181,52 +181,27 @@ export class MigrationExecutor {
    * Apply field changes to an issue
    */
   async applyChanges(issue, changes) {
-    // Get the field IDs and option IDs
-    const issueFields = [];
+    const issueFieldValues = [];
     
     for (const [fieldName, fieldValue] of Object.entries(changes)) {
       const field = await this.findField(fieldName);
       if (!field) continue;
       
-      const option = field.options?.find(opt => opt.name === fieldValue);
-      if (!option) continue;
-      
-      issueFields.push({
-        fieldId: field.node_id,
-        singleSelectOptionId: option.node_id || String(option.id)
+      issueFieldValues.push({
+        field_id: field.id,
+        value: fieldValue
       });
     }
     
-    if (issueFields.length === 0) {
+    if (issueFieldValues.length === 0) {
       return;
     }
     
-    // Get issue node ID if not available
-    let issueNodeId = issue.node_id;
-    if (!issueNodeId) {
-      const { data: issueData } = await this.octokit.rest.issues.get({
-        owner: this.owner,
-        repo: this.repo,
-        issue_number: issue.number
-      });
-      issueNodeId = issueData.node_id;
-    }
-    
-    // Apply all field updates using GraphQL mutation
-    await this.octokit.graphql(`
-      mutation SetIssueFieldValue($issueId: ID!, $issueFields: [IssueFieldCreateOrUpdateInput!]!) {
-        setIssueFieldValue(input: {
-          issueId: $issueId
-          issueFields: $issueFields
-        }) {
-          issue {
-            id
-          }
-        }
-      }
-    `, {
-      issueId: issueNodeId,
-      issueFields: issueFields
+    await this.octokit.request('POST /repos/{owner}/{repo}/issues/{issue_number}/issue-field-values', {
+      owner: this.owner,
+      repo: this.repo,
+      issue_number: issue.number,
+      issue_field_values: issueFieldValues
     });
   }
 
