@@ -7,7 +7,7 @@
 import { Octokit } from '@octokit/rest';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { LabelAnalyzer } from '../../src/label-analyzer.js';
-import { AIMapper, GitHubCopilotProvider, OpenAIProvider } from '../../src/ai-mapper.js';
+import { AIMapper, GitHubCopilotProvider } from '../../src/ai-mapper.js';
 import { MigrationExecutor } from '../../src/migration-executor.js';
 
 const COMMAND = process.env.COMMAND;
@@ -79,7 +79,7 @@ async function analyzeLabels() {
     };
   }
   
-  console.log('🤖 Generating intelligent mappings with AI...');
+  console.log('🤖 Generating intelligent mappings with GitHub Copilot...');
   
   // Extract custom prompt from comment body if present
   const customPrompt = extractCustomPrompt(COMMENT_BODY);
@@ -87,47 +87,13 @@ async function analyzeLabels() {
     console.log(`📝 Using custom prompt: ${customPrompt}`);
   }
   
-  let mappings;
-  let usedAI = false;
+  // Use GitHub Copilot AI provider
+  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN, {
+    customPrompt: customPrompt
+  });
   
-  // Try OpenAI first (most reliable)
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      console.log('Using OpenAI API for intelligent mapping...');
-      const { OpenAIProvider } = await import('../../src/ai-mapper.js');
-      const aiProvider = new OpenAIProvider(process.env.OPENAI_API_KEY, {
-        customPrompt: customPrompt
-      });
-      const aiMapper = new AIMapper(aiProvider);
-      mappings = await aiMapper.generateMappings(analysis);
-      usedAI = true;
-      console.log('✅ Used OpenAI to generate intelligent mappings');
-    } catch (error) {
-      console.warn('⚠️ OpenAI mapping failed:', error.message);
-    }
-  }
-  
-  // Try GitHub Copilot if OpenAI not available
-  if (!usedAI && process.env.GITHUB_TOKEN) {
-    try {
-      console.log('Trying GitHub Copilot API for intelligent mapping...');
-      const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN, {
-        customPrompt: customPrompt
-      });
-      const aiMapper = new AIMapper(aiProvider);
-      mappings = await aiMapper.generateMappings(analysis);
-      usedAI = true;
-      console.log('✅ Used GitHub Copilot to generate intelligent mappings');
-    } catch (error) {
-      console.warn('⚠️ GitHub Copilot mapping failed:', error.message);
-    }
-  }
-  
-  // Fallback to rule-based mapping
-  if (!usedAI) {
-    console.log('ℹ️ Using rule-based mapping (no AI API available)');
-    mappings = generateDefaultMappings(analysis);
-  }
+  const aiMapper = new AIMapper(aiProvider);
+  const mappings = await aiMapper.generateMappings(analysis);
   
   // Save state for next interaction
   saveState({
@@ -163,38 +129,10 @@ async function refineMappings() {
   
   const { analysis, mappings } = state;
   
-  let updatedMappings;
-  let usedAI = false;
-  
-  // Try OpenAI first
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const { OpenAIProvider } = await import('../../src/ai-mapper.js');
-      const aiProvider = new OpenAIProvider(process.env.OPENAI_API_KEY);
-      const aiMapper = new AIMapper(aiProvider);
-      updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
-      usedAI = true;
-    } catch (error) {
-      console.warn('⚠️ OpenAI refinement failed:', error.message);
-    }
-  }
-  
-  // Try GitHub Copilot if OpenAI not available
-  if (!usedAI) {
-    try {
-      const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN);
-      const aiMapper = new AIMapper(aiProvider);
-      updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
-      usedAI = true;
-    } catch (error) {
-      console.warn('⚠️ GitHub Copilot refinement failed:', error.message);
-    }
-  }
-  
-  // Fallback to parsing feedback manually
-  if (!usedAI) {
-    updatedMappings = parseRefinementFeedback(COMMENT_BODY, mappings, analysis);
-  }
+  // Use GitHub Copilot AI to refine based on feedback
+  const aiProvider = new GitHubCopilotProvider(process.env.GITHUB_TOKEN);
+  const aiMapper = new AIMapper(aiProvider);
+  const updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
   
   // Save updated state
   saveState({
