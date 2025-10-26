@@ -89,7 +89,8 @@ async function analyzeLabels() {
   
   // Use GitHub Models AI provider
   const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN, {
-    customPrompt: customPrompt
+    customPrompt: customPrompt,
+    octokit: octokit
   });
   
   const aiMapper = new AIMapper(aiProvider);
@@ -130,7 +131,9 @@ async function refineMappings() {
   const { analysis, mappings } = state;
   
   // Use AI to refine based on feedback
-  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN);
+  const aiProvider = new GitHubModelsProvider(process.env.GITHUB_TOKEN, {
+    octokit: octokit
+  });
   const aiMapper = new AIMapper(aiProvider);
   const updatedMappings = await aiMapper.refineMappings(mappings, COMMENT_BODY, analysis);
   

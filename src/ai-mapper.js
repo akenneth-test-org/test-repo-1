@@ -300,42 +300,59 @@ export class GitHubModelsProvider {
   constructor(githubToken, options = {}) {
     this.githubToken = githubToken;
     this.model = options.model || 'gpt-4o';
-    this.baseURL = 'https://models.github.com/v1';
     this.customPrompt = options.customPrompt || '';
+    // Use Octokit for requests if available
+    this.octokit = options.octokit;
   }
 
   async generateMappings(context) {
     const prompt = this.buildMappingPrompt(context);
 
-    const response = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.githubToken}`
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.3
-      })
-    });
+    const requestBody = {
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+    let data;
+    if (this.octokit) {
+      // Use Octokit's request method
+      const response = await this.octokit.request('POST https://models.github.com/v1/chat/completions', {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        ...requestBody
+      });
+      data = response.data;
+    } else {
+      // Fallback to fetch
+      const response = await fetch('https://models.github.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.githubToken}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+      }
+
+      data = await response.json();
     }
 
-    const data = await response.json();
     const content = data.choices[0].message.content;
     return JSON.parse(content);
   }
@@ -343,35 +360,49 @@ export class GitHubModelsProvider {
   async refineMappings(context) {
     const prompt = this.buildRefinementPrompt(context);
 
-    const response = await fetch(`${this.baseURL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.githubToken}`
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.3
-      })
-    });
+    const requestBody = {
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert at mapping GitHub issue labels to structured issue fields. Respond with valid JSON only.'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+    let data;
+    if (this.octokit) {
+      const response = await this.octokit.request('POST https://models.github.com/v1/chat/completions', {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        ...requestBody
+      });
+      data = response.data;
+    } else {
+      const response = await fetch('https://models.github.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.githubToken}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`GitHub Models API error: ${response.statusText} - ${errorText}`);
+      }
+
+      data = await response.json();
     }
 
-    const data = await response.json();
     const content = data.choices[0].message.content;
     return JSON.parse(content);
   }
