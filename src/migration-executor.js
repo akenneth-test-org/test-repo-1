@@ -197,14 +197,35 @@ export class MigrationExecutor {
       });
     }
     
-    // Apply all field updates
-    for (const update of fieldUpdates) {
-      await this.octokit.request('PATCH /repos/{owner}/{repo}/issues/{issue_number}/fields/{field_id}', {
+    // Get issue node ID if not available
+    let issueNodeId = issue.node_id;
+    if (!issueNodeId) {
+      const { data: issueData } = await this.octokit.rest.issues.get({
         owner: this.owner,
         repo: this.repo,
-        issue_number: issue.number,
-        field_id: update.field_id,
-        value: update.value
+        issue_number: issue.number
+      });
+      issueNodeId = issueData.node_id;
+    }
+    
+    // Apply all field updates using GraphQL
+    for (const update of fieldUpdates) {
+      await this.octokit.graphql(`
+        mutation UpdateIssueField($issueId: ID!, $fieldId: ID!, $valueId: ID!) {
+          updateIssueField(input: {
+            issueId: $issueId
+            fieldId: $fieldId
+            valueId: $valueId
+          }) {
+            issue {
+              id
+            }
+          }
+        }
+      `, {
+        issueId: issueNodeId,
+        fieldId: update.field_id,
+        valueId: update.value
       });
     }
   }
