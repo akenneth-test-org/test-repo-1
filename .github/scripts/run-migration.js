@@ -44,6 +44,15 @@ async function main() {
       case 'preview':
         result = await previewMigration();
         break;
+      case 'modify':
+        result = await enterModifyMode();
+        break;
+      case 'override':
+        result = await applyOverride();
+        break;
+      case 'done':
+        result = await reviewUpdatedPreview();
+        break;
       case 'execute':
         result = await executeMigration();
         break;
@@ -263,8 +272,9 @@ async function previewMigration() {
   }
   
   message += `\n⚠️ **This will modify ${preview.totalIssues} issues**\n\n`;
-  message += '**Ready to execute?**\n';
+  message += '**What would you like to do?**\n';
   message += '- Comment **"@issue-fields-migrator execute migration"** to proceed\n';
+  message += '- Comment **"@issue-fields-migrator modify"** to adjust field values for specific issues\n';
   message += '- Comment **"@issue-fields-migrator cancel"** to abort\n\n';
   message += '*(Original labels will remain on issues after migration)*';
   
@@ -283,10 +293,10 @@ async function executeMigration() {
     throw new Error('No active migration found. Start with @issue-fields-migrator migrate-labels');
   }
   
-  const { mappings } = state;
+  const { mappings, overrides = {} } = state;
   
   const executor = new MigrationExecutor(octokit, owner, repo);
-  const result = await executor.execute(mappings);
+  const result = await executor.execute(mappings, { overrides });
   
   // Clear state
   clearState();
@@ -447,6 +457,188 @@ function parseRefinementFeedback(feedback, currentMappings, analysis) {
   
   // If we can't parse, return current mappings
   return currentMappings;
+}
+
+async function enterModifyMode() {
+  console.log('Entering modification mode...');
+  
+  const state = loadState();
+  if (!state.preview) {
+    throw new Error('No preview available. Please run preview first.');
+  }
+  
+  const message = '✏️ You can now modify field values for specific issues.\n\n' +
+    '**Examples:**\n' +
+    '- "Set issue #42 Priority to P0"\n' +
+    '- "Change issue #15 Status to In Progress"\n' +
+    '- "Don\'t update issue #23"\n' +
+    '- "Set issues #10, #11, #12 Priority to Critical"\n\n' +
+    'Type **"done"** when finished, or **"back"** to see the preview again.';
+  
+  // Update state
+  state.step = 'modify_preview';
+  state.overrides = state.overrides || {};
+  saveState(state);
+  
+  return {
+    success: true,
+    command: 'modify',
+    message
+  };
+}
+
+async function applyOverride() {
+  console.log('Applying override...');
+  
+  const state = loadState();
+  if (state.step !== 'modify_preview') {
+    throw new Error('Not in modification mode. Type "modify" first.');
+  }
+  
+  // Parse the override command
+  const parsed = parsePreviewModification(COMMENT_BODY, state.preview.affectedIssues, state.analysis);
+  
+  if (!parsed) {
+    return {
+      success: false,
+      message: '❌ I couldn\'t understand that modification. Please try:\n' +
+        '- "Set issue #42 Priority to P0"\n' +
+        '- "Don\'t update issue #23"\n' +
+        '- "Set issues #10, #11, #12 Priority to Critical"'
+    };
+  }
+  
+  // Apply the override
+  for (const issueNumber of parsed.issues) {
+    if (!state.overrides[issueNumber]) {
+      state.overrides[issueNumber] = {};
+    }
+    
+    if (parsed.action === 'skip') {
+      state.overrides[issueNumber]._skip = true;
+    } else if (parsed.action === 'set') {
+      state.overrides[issueNumber][parsed.fieldName] = parsed.fieldValue;
+    }
+  }
+  
+  saveState(state);
+  
+  // Format confirmation
+  const issueList = parsed.issues.length === 1 
+    ? `Issue #${parsed.issues[0]}`
+    : `Issues #${parsed.issues.join(', #')}`;
+  
+  let confirmMessage;
+  if (parsed.action === 'skip') {
+    confirmMessage = `✅ ${issueList} will be skipped.`;
+  } else if (parsed.action === 'set') {
+    confirmMessage = `✅ ${issueList} ${parsed.fieldName} will be set to **${parsed.fieldValue}**.`;
+  }
+  
+  confirmMessage += '\n\nContinue making changes, or type **"done"** to review the updated preview.';
+  
+  return {
+    success: true,
+    command: 'override',
+    message: confirmMessage
+  };
+}
+
+async function reviewUpdatedPreview() {
+  console.log('Reviewing updated preview...');
+  
+  const state = loadState();
+  if (!state.preview || !state.proposedMappings) {
+    throw new Error('No preview available.');
+  }
+  
+  // Regenerate preview with overrides
+  const executor = new MigrationExecutor(octokit, owner, repo);
+  const updatedPreview = await executor.previewWithOverrides(state.proposedMappings, state.overrides || {});
+  
+  // Format message
+  let message = '## 📋 Updated Migration Preview\n\n';
+  message += `**Total Issues to Update:** ${updatedPreview.totalIssues} *(was ${state.preview.totalIssues})*\n\n`;
+  
+  // By field
+  for (const [field, values] of Object.entries(updatedPreview.byField)) {
+    message += `### ${field}\n`;
+    for (const [value, count] of Object.entries(values)) {
+      message += `- ${count} issues → **${value}**\n`;
+    }
+    message += '\n';
+  }
+  
+  // Overrides summary
+  if (state.overrides && Object.keys(state.overrides).length > 0) {
+    message += '### 🔧 Manual Overrides\n';
+    for (const [issueNumber, changes] of Object.entries(state.overrides)) {
+      if (changes._skip) {
+        message += `- Issue #${issueNumber}: **Skip** (will not be updated)\n`;
+      } else {
+        const changesList = Object.entries(changes)
+          .filter(([k]) => k !== '_skip')
+          .map(([field, value]) => `${field}=${value}`)
+          .join(', ');
+        message += `- Issue #${issueNumber}: ${changesList}\n`;
+      }
+    }
+    message += '\n';
+  }
+  
+  message += `\n⚠️ **This will modify ${updatedPreview.totalIssues} issues**\n\n`;
+  message += '**What would you like to do?**\n';
+  message += '- Comment **"@issue-fields-migrator execute migration"** to proceed\n';
+  message += '- Comment **"@issue-fields-migrator modify"** to make more changes\n';
+  message += '- Comment **"@issue-fields-migrator cancel"** to abort';
+  
+  // Update state
+  state.preview = updatedPreview;
+  state.step = 'preview_changes';
+  saveState(state);
+  
+  return {
+    success: true,
+    command: 'done',
+    message
+  };
+}
+
+function parsePreviewModification(message, affectedIssues, analysis) {
+  // Skip pattern
+  const skipMatch = message.match(/(?:don'?t|skip)\s+(?:update\s+)?issue\s+#?(\d+(?:,\s*#?\d+)*)/i);
+  if (skipMatch) {
+    const issueNumbers = skipMatch[1].split(',').map(n => parseInt(n.replace('#', '').trim()));
+    return {
+      action: 'skip',
+      issues: issueNumbers
+    };
+  }
+
+  // Set pattern
+  const setMatch = message.match(/(?:set|change)\s+issue(?:s)?\s+#?(\d+(?:,\s*#?\d+)*)\s+(.+?)\s+to\s+(.+)/i);
+  if (setMatch) {
+    const issueNumbers = setMatch[1].split(',').map(n => parseInt(n.replace('#', '').trim()));
+    const fieldName = setMatch[2].trim();
+    const fieldValue = setMatch[3].trim();
+    
+    const field = analysis.availableFields.find(f => 
+      f.name.toLowerCase() === fieldName.toLowerCase()
+    );
+    
+    if (!field) {
+      return null;
+    }
+    
+    return {
+      action: 'set',
+      issues: issueNumbers,
+      fieldName: field.name,
+      fieldValue
+    };
+  }
+
+  return null;
 }
 
 function formatMappingsMessage(mappings, analysis, previousMappings = null) {
