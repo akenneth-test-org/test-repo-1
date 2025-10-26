@@ -30,8 +30,8 @@ jobs:
       issues: write
       contents: read
     
-    # Only run if comment contains @issue-fields-migrator
-    if: contains(github.event.comment.body, '@issue-fields-migrator') || github.event_name == 'workflow_dispatch'
+    # Only run if comment contains @issue-fields-migrator AND not from bot
+    if: (contains(github.event.comment.body, '@issue-fields-migrator') && github.event.comment.user.login != 'issue-fields-migrator-test[bot]') || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code

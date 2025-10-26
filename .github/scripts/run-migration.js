@@ -100,7 +100,7 @@ async function analyzeLabels() {
   message += formatMappingsMessage(mappings, analysis);
   message += '\n**What would you like to do?**\n';
   message += '1. Comment **"@issue-fields-migrator accept"** to preview changes\n';
-  message += '2. Comment **"@issue-fields-migrator Map <label> to <value> instead"** to modify mappings\n';
+  message += '2. Comment **"@issue-fields-migrator Map \\<label\\> to \\<value\\> instead"** to modify mappings\n';
   message += '3. Use GitHub Copilot for intelligent mapping:\n';
   message += '   - Go to [github.com/copilot](https://github.com/copilot)\n';
   message += '   - Use the prompt from [COPILOT_PROMPT.md](../blob/main/COPILOT_PROMPT.md)\n';
