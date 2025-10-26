@@ -92,7 +92,7 @@ jobs:
       - name: Run migration command
         id: migrate
         env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          GITHUB_TOKEN: ${{ secrets.COPILOT_TOKEN || steps.generate-token.outputs.token }}
           COMMAND: ${{ steps.parse.outputs.command }}
           TARGET_REPO: ${{ steps.parse.outputs.repository }}
           ISSUE_NUMBER: ${{ steps.parse.outputs.issue_number }}
