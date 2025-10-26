@@ -473,7 +473,7 @@ async function enterModifyMode() {
     '- "Change issue #15 Status to In Progress"\n' +
     '- "Don\'t update issue #23"\n' +
     '- "Set issues #10, #11, #12 Priority to Critical"\n\n' +
-    'Type **"done"** when finished, or **"back"** to see the preview again.';
+    'Type **"@issue-fields-migrator done"** when finished, or **"@issue-fields-migrator back"** to see the preview again.';
   
   // Update state
   state.step = 'modify_preview';
@@ -535,7 +535,7 @@ async function applyOverride() {
     confirmMessage = `✅ ${issueList} ${parsed.fieldName} will be set to **${parsed.fieldValue}**.`;
   }
   
-  confirmMessage += '\n\nContinue making changes, or type **"done"** to review the updated preview.';
+  confirmMessage += '\n\nContinue making changes, or type **"@issue-fields-migrator done"** to review the updated preview.';
   
   return {
     success: true,
