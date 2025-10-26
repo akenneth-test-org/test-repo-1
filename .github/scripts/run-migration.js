@@ -102,9 +102,9 @@ async function analyzeLabels() {
   message += `📋 Available issue fields: ${analysis.availableFields.map(f => f.name).join(', ')}\n\n`;
   message += formatMappingsMessage(mappings, analysis);
   message += '\n**What would you like to do?**\n';
-  message += '1. Comment **"accept"** to preview changes\n';
-  message += '2. Comment **"Map high-priority to P1 instead"** to modify mappings\n';
-  message += '3. Comment **"cancel"** to stop';
+  message += '1. Comment **"@issue-fields-migrator accept"** to preview changes\n';
+  message += '2. Comment **"@issue-fields-migrator Map <label> to <value> instead"** to modify mappings\n';
+  message += '3. Comment **"@issue-fields-migrator cancel"** to stop';
   
   return {
     success: true,
@@ -142,9 +142,9 @@ async function refineMappings() {
   let message = '🤖 Updated mappings based on your feedback:\n\n';
   message += formatMappingsMessage(updatedMappings, analysis, mappings);
   message += '\n**What would you like to do?**\n';
-  message += '1. Comment **"accept"** to preview changes\n';
+  message += '1. Comment **"@issue-fields-migrator accept"** to preview changes\n';
   message += '2. Comment more feedback to further modify\n';
-  message += '3. Comment **"cancel"** to stop';
+  message += '3. Comment **"@issue-fields-migrator cancel"** to stop';
   
   return {
     success: true,
@@ -186,19 +186,24 @@ async function previewMigration() {
   }
   
   if (preview.examples.length > 0) {
-    message += '### Example Issues\n';
-    preview.examples.slice(0, 5).forEach(ex => {
-      message += `- #${ex.number}: ${ex.title}\n`;
-      message += `  - Labels: ${ex.labels.join(', ')}\n`;
+    message += '### All Issues to be Updated\n\n';
+    message += '| Issue | Title | Labels | Field Changes |\n';
+    message += '|-------|-------|--------|---------------|\n';
+    
+    preview.examples.forEach(ex => {
+      const issueLink = `#${ex.number}`;
+      const title = ex.title.substring(0, 50) + (ex.title.length > 50 ? '...' : '');
+      const labels = ex.labels.join(', ');
       const changes = Object.entries(ex.changes).map(([k, v]) => `${k}=${v}`).join(', ');
-      message += `  - Will set: ${changes}\n`;
+      message += `| ${issueLink} | ${title} | ${labels} | ${changes} |\n`;
     });
+    message += '\n';
   }
   
   message += `\n⚠️ **This will modify ${preview.totalIssues} issues**\n\n`;
   message += '**Ready to execute?**\n';
-  message += '- Comment **"execute migration"** to proceed\n';
-  message += '- Comment **"cancel"** to abort\n\n';
+  message += '- Comment **"@issue-fields-migrator execute migration"** to proceed\n';
+  message += '- Comment **"@issue-fields-migrator cancel"** to abort\n\n';
   message += '*(Original labels will remain on issues after migration)*';
   
   return {
@@ -235,16 +240,33 @@ async function executeMigration() {
     for (const [fieldName, count] of Object.entries(result.byField)) {
       message += `- **${fieldName}**: ${count} issues\n`;
     }
+    message += '\n';
+  }
+  
+  if (result.updatedIssues && result.updatedIssues.length > 0) {
+    message += '### All Updated Issues\n\n';
+    message += '| Issue | Title | Fields Updated | Status |\n';
+    message += '|-------|-------|----------------|--------|\n';
+    
+    result.updatedIssues.forEach(update => {
+      const issueLink = `#${update.number}`;
+      const title = update.title.substring(0, 50) + (update.title.length > 50 ? '...' : '');
+      const fields = Object.entries(update.changes).map(([k, v]) => `${k}=${v}`).join(', ');
+      const status = update.success ? '✅' : '❌';
+      message += `| ${issueLink} | ${title} | ${fields} | ${status} |\n`;
+    });
+    message += '\n';
   }
   
   if (result.errors.length > 0) {
-    message += '\n### Errors\n';
+    message += '### Errors\n';
     result.errors.forEach(err => {
       message += `- Issue #${err.issue}: ${err.error}\n`;
     });
+    message += '\n';
   }
   
-  message += '\n🎉 Your labels have been migrated to issue fields!';
+  message += '🎉 Your labels have been migrated to issue fields!';
   
   return {
     success: true,
