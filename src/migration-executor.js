@@ -182,7 +182,7 @@ export class MigrationExecutor {
    */
   async applyChanges(issue, changes) {
     // Get the field IDs and option IDs
-    const fieldUpdates = [];
+    const issueFields = [];
     
     for (const [fieldName, fieldValue] of Object.entries(changes)) {
       const field = await this.findField(fieldName);
@@ -191,10 +191,14 @@ export class MigrationExecutor {
       const option = field.options?.find(opt => opt.name === fieldValue);
       if (!option) continue;
       
-      fieldUpdates.push({
-        field_id: field.id,
-        value: option.id
+      issueFields.push({
+        fieldId: field.node_id,
+        singleSelectOptionId: option.node_id || String(option.id)
       });
+    }
+    
+    if (issueFields.length === 0) {
+      return;
     }
     
     // Get issue node ID if not available
@@ -208,26 +212,22 @@ export class MigrationExecutor {
       issueNodeId = issueData.node_id;
     }
     
-    // Apply all field updates using GraphQL
-    for (const update of fieldUpdates) {
-      await this.octokit.graphql(`
-        mutation UpdateIssueField($issueId: ID!, $fieldId: ID!, $valueId: ID!) {
-          updateIssueField(input: {
-            issueId: $issueId
-            fieldId: $fieldId
-            valueId: $valueId
-          }) {
-            issue {
-              id
-            }
+    // Apply all field updates using GraphQL mutation
+    await this.octokit.graphql(`
+      mutation SetIssueFieldValue($issueId: ID!, $issueFields: [IssueFieldCreateOrUpdateInput!]!) {
+        setIssueFieldValue(input: {
+          issueId: $issueId
+          issueFields: $issueFields
+        }) {
+          issue {
+            id
           }
         }
-      `, {
-        issueId: issueNodeId,
-        fieldId: update.field_id,
-        valueId: update.value
-      });
-    }
+      }
+    `, {
+      issueId: issueNodeId,
+      issueFields: issueFields
+    });
   }
 
   /**
