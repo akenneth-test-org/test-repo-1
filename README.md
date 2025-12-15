@@ -18,8 +18,8 @@ The Issue Fields Migrator helps you transition from using labels for structured 
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/akenneth-test-org/test-repo-1.git
-   cd test-repo-1
+   git clone <repository-url>
+   cd <repository-name>
    ```
 
 2. Install dependencies:
