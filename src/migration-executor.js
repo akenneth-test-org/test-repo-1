@@ -41,15 +41,13 @@ export class MigrationExecutor {
         preview.byField[fieldName][value]++;
       }
       
-      // Add to examples (first 10)
-      if (preview.examples.length < 10) {
-        preview.examples.push({
-          number: issue.number,
-          title: issue.title,
-          labels: issue.labels.map(l => l.name),
-          changes
-        });
-      }
+      // Add to examples (all issues)
+      preview.examples.push({
+        number: issue.number,
+        title: issue.title,
+        labels: issue.labels.map(l => l.name),
+        changes
+      });
     }
     
     return preview;
@@ -100,15 +98,13 @@ export class MigrationExecutor {
         preview.byField[fieldName][value]++;
       }
       
-      // Add to examples (first 10)
-      if (preview.examples.length < 10) {
-        preview.examples.push({
-          number: issue.number,
-          title: issue.title,
-          labels: issue.labels.map(l => l.name),
-          changes
-        });
-      }
+      // Add to examples (all issues)
+      preview.examples.push({
+        number: issue.number,
+        title: issue.title,
+        labels: issue.labels.map(l => l.name),
+        changes
+      });
     }
     
     return preview;
